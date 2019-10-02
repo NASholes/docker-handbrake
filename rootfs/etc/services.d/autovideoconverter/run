@@ -301,6 +301,19 @@ process_watch_folder() {
         log "Change detected in watch folder '$WF'."
     fi
 
+    log "Ignoring the following file extensions: $AC_IGNORE_FILE_EXTENSIONS"
+    filterExtensions=()
+    IFS=',' read -ra AC_IGNORE_FILE_EXTENSIONS <<< "$IN"
+    for extension in "${AC_IGNORE_FILE_EXTENSIONS[@]}"; do
+        # trim whitespace from both sides
+        extension="$(echo -e "${extension}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        # skip empty items in the list
+        if [ -z "$extension" ]; then
+            continue
+        fi
+        filterExtensions+=("$extension")
+    done
+
     # Make sure to update the watch directory hash before processing it.
     # This is to make sure we catch, on the next round, changes occuring
     # during the processing.
@@ -315,7 +328,18 @@ process_watch_folder() {
         uniq > "$FILELIST"
     while read -u 3 FILE
     do
-        process_video "$FILE" "$WF"
+        processVideo=true
+        for extension in "${filterExtensions[@]}"; do
+            # if the file ends with $extension, skip processing
+            if [[ $FILE == *$extension ]]; then
+                processVideo=false
+                log "Ignoring $FILE, matches ignored extension $extension"
+                break
+            fi
+        done
+        if [ "$processVideo" == true ]; then
+            process_video "$FILE" "$WF"
+        fi
     done 3<"$FILELIST"
     rm "$FILELIST"
     log "Watch folder '$WF' processing terminated."
@@ -349,6 +373,7 @@ while true; do
         AC_OUTPUT_DIR="${AUTOMATED_CONVERSION_OUTPUT_DIR:-/output}"
         AC_OUTPUT_SUBDIR="${AUTOMATED_CONVERSION_OUTPUT_SUBDIR:-UNSET}"
         AC_KEEP_SOURCE="${AUTOMATED_CONVERSION_KEEP_SOURCE:-1}"
+        AC_IGNORE_FILE_EXTENSIONS="${AUTOMATED_CONVERSION_IGNORE_FILE_EXTENSIONS:-""}"
 
         # Apply per-watch folder settings.
         if [ -n "${DIR#*/watch}" ]; then
